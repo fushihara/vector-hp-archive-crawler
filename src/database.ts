@@ -1,3 +1,4 @@
+import { sprintf } from "jsr:@std/fmt@1.0.2/printf"
 import { Database as SqliteDb } from "jsr:@db/sqlite@0.11";
 import { DenoSqlite3Dialect } from "jsr:@soapbox/kysely-deno-sqlite@2.2.0";
 import { Generated, Kysely, sql } from "npm:kysely@0.27.4";
@@ -39,6 +40,17 @@ interface DbType {
     mimetype: string,
     status_code: number,
     data_length: number,
+  }
+  vector_author_listup: {
+    id: Generated<number>;
+    ia_timestamp: string;
+    author_id: string;
+    hp_title: string;
+  }
+  vector_main_author_pages: {
+    id: Generated<number>;
+    vector_main_va: number;
+    hp_space_va: string;
   }
 }
 export class Database {
@@ -99,6 +111,118 @@ export class Database {
         UNIQUE(timestamp_str,original_url)
       ) strict;`.execute(this.db);
     await sql<DbType[]>`CREATE INDEX IF NOT EXISTS ia_saved_url_author_id ON ia_saved_url(author_id)`.execute(this.db);
+    // vector_author_listup
+    await sql<DbType[]>`
+      CREATE TABLE IF NOT EXISTS vector_author_listup(
+        id           INTEGER NOT NULL PRIMARY KEY,
+        ia_timestamp TEXT    NOT NULL CHECK(ia_timestamp<>''),
+        author_id    TEXT    NOT NULL CHECK(author_id<>''),
+        hp_title     TEXT    NOT NULL ,
+        UNIQUE(ia_timestamp,author_id)
+      ) strict;`.execute(this.db);
+    await sql<DbType[]>`CREATE INDEX IF NOT EXISTS vector_author_listup_author_id ON vector_author_listup(author_id)`.execute(this.db);
+    // vector_main_author_pages
+    await sql<DbType[]>`
+      CREATE TABLE IF NOT EXISTS vector_main_author_pages(
+        id             INTEGER NOT NULL PRIMARY KEY,
+        vector_main_va INTEGER NOT NULL CHECK(0<=vector_main_va),
+        hp_space_va    TEXT    NOT NULL CHECK(hp_space_va<>''),
+        UNIQUE(vector_main_va),
+        UNIQUE(vector_main_va,hp_space_va)
+      ) strict;`.execute(this.db);
+    await sql<DbType[]>`CREATE INDEX IF NOT EXISTS vector_main_author_pages_ ON vector_main_author_pages(hp_space_va)`.execute(this.db);
+  }
+  async getAllVaList() {
+    const result = new Set<string>();
+    const titleMap = new Map<string, string[]>();
+    await this.db.selectFrom("va_id_list").select("va_id").execute().then(vaIdList => {
+      vaIdList.forEach(vaId => {
+        result.add(sprintf("VA%06d", Number(vaId.va_id)));
+      })
+    });
+    await this.db.selectFrom("vector_main_author_pages").select("hp_space_va").execute().then(vaIdList => {
+      vaIdList.forEach(vaId => {
+        result.add(vaId.hp_space_va);
+      })
+    });
+    await this.db
+      .selectFrom("ia_saved_url")
+      .select("author_id")
+      .groupBy("author_id")
+      .execute()
+      .then(dbResponse => {
+        dbResponse.forEach(oneData => {
+          result.add(oneData.author_id);
+        })
+      });
+    await this.db
+      .selectFrom("vector_author_listup")
+      .select(["author_id", "hp_title"])
+      .groupBy(["author_id", "hp_title"])
+      .execute()
+      .then(dbResponse => {
+        dbResponse.forEach(oneData => {
+          result.add(oneData.author_id);
+          const titleMapData = titleMap.get(oneData.author_id);
+          if (titleMapData == null) {
+            titleMap.set(oneData.author_id, [oneData.hp_title]);
+          } else {
+            titleMapData.push(oneData.hp_title);
+          }
+        })
+      });
+    return {
+      allVaList: [...result].filter(i => i.match(/^VA\d{6}$/)).sort(),
+      titleMap,
+    }
+  }
+  async upsertVectorMainAuthorPages(vectorMainVa: number, upSpaceVa: string) {
+    await this.db.insertInto("vector_main_author_pages")
+      .values({
+        vector_main_va: vectorMainVa,
+        hp_space_va: upSpaceVa,
+      }).onConflict((cb) => {
+        return cb.column("vector_main_va").doNothing();
+      }).execute();
+  }
+  async upsertVectorAuthorListup(iaTimestamp: string, hpList: { authorId: string, hpTitle: string }[]) {
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .deleteFrom("vector_author_listup")
+        .where("vector_author_listup.ia_timestamp", "==", iaTimestamp)
+        .execute();
+      const chunkedList = chunk(hpList, 100);
+      for (const chunked of chunkedList) {
+        await trx.insertInto("vector_author_listup").values([...chunked].map(data => {
+          return {
+            ia_timestamp: iaTimestamp,
+            author_id: data.authorId,
+            hp_title: data.hpTitle,
+          };
+        })).execute();
+      }
+    });
+  }
+
+  /**
+   * @param vaIdList ["VA123456"] の様な文字列の配列を渡す
+   * @returns 
+   */
+  async getIaSaveUrlList(vaIdList?: string[]) {
+    let query = this.db
+      .selectFrom("ia_saved_url")
+      .selectAll();
+    if (vaIdList) {
+      query = query.where(wref => {
+        return wref.eb(
+          wref.ref("author_id"),
+          "in",
+          vaIdList,
+        )
+      });
+    }
+    const result = await query.execute();
+    return result;
   }
   async upsertIaSavedUrl(inputData: {
     timestampStr: string,

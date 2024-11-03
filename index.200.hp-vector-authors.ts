@@ -6,15 +6,14 @@ import { getLogger } from "./src/log.ts";
 const logger = getLogger("index");
 await dbInstance.init();
 const MAX_AN_NUMBER = 64000;
+fetchHttpGetBinary.isLogEnable = false;
+const existVaList = new Set<number>();
 for (let anNumber = 0; anNumber <= MAX_AN_NUMBER; anNumber++) {
   const url = sprintf("https://hp.vector.co.jp/authors/VA0%05d/", anNumber); //  anNumber
-  do {
-    try {
-      await fetchHttpGetBinary(dbInstance, url, { check: false });
-    } catch (error) {
-      logger.warn(`HTTP GET失敗 ${error}`);
-      await new Promise(resolve => { setTimeout(() => { resolve(null) }, 20 * 1000) });
-      continue;
-    }
-  } while (false);
+  const { status } = await fetchHttpGetBinary(dbInstance, url, { check: false });
+  if (status == 200) {
+    existVaList.add(anNumber);
+    console.log(`FOUND ${url}`);
+  }
 }
+console.log(`完了`);

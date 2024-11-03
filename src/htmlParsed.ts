@@ -4,6 +4,39 @@ import { delay } from "jsr:@std/async@1.0.6/delay";
 import { z } from "npm:zod@3.23.8";
 import { getLogger } from "./log.ts";
 const loggerDeno = getLogger("htmlParser");
+
+export async function parseAuthorListup(html: string) {
+  const document = new JSDOM(html).window.document;
+  await delay(1);
+  const aList = document.querySelectorAll<HTMLAnchorElement>("a");
+  const result: { authorId: string, hpTitle: string }[] = [];
+  const allowVaUniqueId = ["yohko", "tfuruka1", "shurei", "sengoku"];
+  for (const element of aList) {
+    const href = element.href;
+    const urlObj = new URL(href, "https://example.com");
+    if (urlObj.host != "www.vector.co.jp" && urlObj.host != "hp.vector.co.jp") {
+      continue;
+    }
+    const m = urlObj.pathname.match(/^\/authors\/(?<va_id>[^\/]+)\/$/);
+    if (!m) {
+      continue;
+    }
+    const vaId = String(m.groups!["va_id"]);
+    if (!vaId.match(/^VA\d{6}$/)) {
+      if (!allowVaUniqueId.includes(vaId)) {
+        throw new Error(vaId);
+      }
+    }
+    const innerText = element.textContent ?? "";
+    if (vaId == "VA007219" && innerText == "戻る") {
+      // 以下のURLでナビゲーションの戻るのリンク先が VA007219 になっている事を確認。明らかにおかしいので名指しでスキップ
+      // https://web.archive.org/web/20121101213522im_/http://www.vector.co.jp/vpack/author/listpage.html
+      continue;
+    }
+    result.push({ authorId: vaId, hpTitle: innerText });
+  }
+  return result;
+}
 /**
  * https://www.vector.co.jp/vpack/browse/person/an001687.html をパース
  * @param html 
@@ -24,7 +57,7 @@ export async function parseAnProfilePage(html: string) {
     throw new Error();
   }
   const urlList = [...e.querySelectorAll<HTMLAnchorElement>("a")].map(a => a.href);
-  return {urlList};
+  return { urlList: new Set(urlList) };
 }
 /**
  * https://entertainment.ha.com/c/catalog-print.zx?saleNo=7354&preview=1&compact=1&ic5=CatalogHome-AucType-CompactViewOfAuction-081817

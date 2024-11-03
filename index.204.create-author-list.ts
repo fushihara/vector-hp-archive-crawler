@@ -3,15 +3,25 @@ import { TextLineStream } from "jsr:@std/streams@1.0.1/text-line-stream";
 import { sprintf } from "jsr:@std/fmt@1.0.2/printf"
 import { dbInstance } from "./src/database.ts";
 import { fetchHttpGetBinary, fetchHttpGetText } from "./src/fetchHttp.ts";
-import { parseAnProfilePage } from "./src/htmlParsed.ts";
+import { parseAnProfilePage, parseAuthorListup } from "./src/htmlParsed.ts";
 import { getLogger } from "./src/log.ts";
 const logger = getLogger("index");
 await dbInstance.init();
-const MAX_VA_ID = 60700;
-const vaIdSet = new Set<number>();
-fetchHttpGetBinary.isLogEnable = false;
-const inputData = await readLine(".saved/hp.vector");
-await dbInstance.upsertIaSavedUrl(inputData);
+//fetchHttpGetBinary.isLogEnable = false;
+const inputData = await readLine(".saved/vector-author-listpage-http.json");
+/// key:vaidの部分、val:HPタイトル
+const hpTitleMap = new Map<string, string>();
+for (const data of inputData) {
+  const requestUrl = `https://web.archive.org/web/${data.timestampStr}im_/${data.originalUrl}`;
+  const { binaryData } = await fetchHttpGetBinary(dbInstance, requestUrl);
+  const textData = new TextDecoder("sjis").decode(binaryData);
+  await parseAuthorListup(textData).then(async list => {
+    await dbInstance.upsertVectorAuthorListup(
+      data.timestampStr,
+      list,
+    );
+  });
+}
 console.log(`完了`);
 
 async function readLine(filePath: string) {
@@ -25,7 +35,6 @@ async function readLine(filePath: string) {
     originalUrl: string,
     host: string,
     path: string,
-    authorId: string,
     mimeType: string,
     statusCode: number,
     dataLength: number,
@@ -48,29 +57,19 @@ async function readLine(filePath: string) {
     const originalUrl = z.string().url().parse(parsedData[2]);
     const host = new URL(originalUrl).host;
     const path = new URL(originalUrl).pathname;
-    const mimeType = z.string().parse(parsedData[3]);
+    const mimeType = z.string().parse(parsedData[2]);
     const statusCode = Number(z.string().regex(/^\d+$/).parse(parsedData[4]));
     const dataLength = Number(z.string().regex(/^\d+$/).parse(parsedData[6]));
-    let authorId = "";
-    {
-      // /authors/tfuruka1/ohiraki/981020.gif
-      const m = path.match(/^\/authors\/(?<author_id>[^\/]+)/);
-      if (m) {
-        authorId = String(m.groups!["author_id"]);
-      }
-    }
     // /authors/images/
     result.push({
       timestampStr: timestampStr,
       originalUrl: originalUrl,
       host: host,
       path: path,
-      authorId: authorId,
       mimeType: mimeType,
       statusCode: statusCode,
       dataLength: dataLength,
     });
-    console.log(`${host}${path}`);
   }
   return result;
 }
