@@ -77,7 +77,8 @@ https://web.archive.org/web/20161012170825/http://www.vector.co.jp/vpack/author/
 
 # IAからDLしたURLリスト
 ## hp.vector
-> curl -O "https://web.archive.org/cdx/search/cdx?url=http://hp.vector.co.jp/authors/&matchType=domain&output=json&filter=statuscode:200&collapse=urlkey"
+> curl "https://web.archive.org/cdx/search/cdx?url=http://hp.vector.co.jp/authors/&matchType=domain&output=json&filter=statuscode:200&collapse=urlkey" -o ".saved/hp.vector.json"
+個人HPのファイル一覧
 
 ## vector-browse-person
 > curl "https://web.archive.org/cdx/search/cdx?url=https://www.vector.co.jp/vpack/browse/person/&matchType=prefix&output=json&filter=statuscode:200&collapse=urlkey" -o "vector-browse-person"
@@ -101,7 +102,7 @@ vector個人HPページのURLを連番でhttp getして、status codeが200だ�
 保存先のDBテーブルは"va_id_list"
 
 ## index.203.inport-ia-list-to-db.ts
-IAからDLしたvectorの個人HPのURL一覧をDBテーブル"ia_saved_url"に保存
+IAからDLしたvectorの個人HPのURL一覧"hp.vector"をDBテーブル"ia_saved_url"に保存
 インターネットアクセスは一切なし
 
 ## index.204.create-author-list.ts

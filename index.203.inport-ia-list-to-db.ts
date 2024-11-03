@@ -1,16 +1,12 @@
-import { string, z } from "npm:zod@3.23.8"
+import { z } from "npm:zod@3.23.8"
 import { TextLineStream } from "jsr:@std/streams@1.0.1/text-line-stream";
-import { sprintf } from "jsr:@std/fmt@1.0.2/printf"
 import { dbInstance } from "./src/database.ts";
-import { fetchHttpGetBinary, fetchHttpGetText } from "./src/fetchHttp.ts";
-import { parseAnProfilePage } from "./src/htmlParsed.ts";
+import { fetchHttpGetBinary } from "./src/fetchHttp.ts";
 import { getLogger } from "./src/log.ts";
 const logger = getLogger("index");
 await dbInstance.init();
-const MAX_VA_ID = 60700;
-const vaIdSet = new Set<number>();
 fetchHttpGetBinary.isLogEnable = false;
-const inputData = await readLine(".saved/hp.vector");
+const inputData = await readLine(".saved/hp.vector.json");
 await dbInstance.upsertIaSavedUrl(inputData);
 console.log(`完了`);
 
